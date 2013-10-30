@@ -112,7 +112,12 @@ namespace mongo {
                     return;
                 if ( _c ) {
                     // be careful in case cursor was deleted by someone else
-                    ClientCursor::erase( _id );
+                    if (_id == INVALID_CURSOR_ID) {
+                        delete _c;
+                    }
+                    else {
+                        ClientCursor::erase( _id );
+                    }
                 }
                 if ( c ) {
                     _c = c;
@@ -162,8 +167,12 @@ namespace mongo {
         
         ClientCursor(int queryOptions, const shared_ptr<Cursor>& c, const string& ns,
                      BSONObj query = BSONObj(), const bool inMultiStatementTxn = false );
+        ClientCursor(bool dummyArg, int queryOptions, const shared_ptr<Cursor>& c, const string& ns);
 
         ~ClientCursor();
+
+        // Initializes cursorID        
+        void initCursorID();
 
         // ***************  basic accessors *******************
 

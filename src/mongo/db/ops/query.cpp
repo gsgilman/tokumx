@@ -704,7 +704,7 @@ namespace mongo {
         if (pq.hasOption( QueryOption_OplogReplay )) {
             options |= QueryOption_OplogReplay;
         }
-        ClientCursor::Holder ccPointer( new ClientCursor( options, cursor, ns ) );
+        ClientCursor::Holder ccPointer( new ClientCursor( false, options, cursor, ns ) );
 
         // for oplog cursors, we check if we are reading data that is too old and might
         // be stale.
