@@ -89,7 +89,7 @@ namespace mongo {
          */
         struct TrackedPtr {
         public:
-            TrackedPtr(shard_ptr<_ObjType> instance, ObjTracker<_ObjType>* tracker) :
+            TrackedPtr(shared_ptr<_ObjType> instance, ObjTracker<_ObjType>* tracker) :
                 _objPtr(instance),
                 _tracker(tracker) { }
             shared_ptr<_ObjType> _objPtr;

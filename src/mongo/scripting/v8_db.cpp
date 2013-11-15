@@ -140,7 +140,7 @@ namespace mongo {
 
         ScriptEngine::runConnectCallback(*conn);
 
-        args.This()->SetInternalField(0, v8::External::New(conn));
+        args.This()->SetInternalField(0, v8::External::New(conn.get()));
         args.This()->ForceSet(scope->v8StringData("slaveOk"), v8::Boolean::New(false));
         args.This()->ForceSet(scope->v8StringData("host"), scope->v8StringData(host));
 
@@ -159,7 +159,7 @@ namespace mongo {
         v8::Persistent<v8::Object> self = v8::Persistent<v8::Object>::New(args.This());
         scope->dbClientBaseTracker.track(self, conn);
 
-        args.This()->SetInternalField(0, v8::External::New(conn));
+        args.This()->SetInternalField(0, v8::External::New(conn.get()));
         args.This()->ForceSet(scope->v8StringData("slaveOk"), v8::Boolean::New(false));
         args.This()->ForceSet(scope->v8StringData("host"), scope->v8StringData("EMBEDDED"));
 

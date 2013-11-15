@@ -71,7 +71,7 @@ namespace mongo {
         shared_ptr<BSONHolder> holder (new BSONHolder(data));
         holder->_readOnly = readOnly;
         holder->_scope = this;
-        obj->SetInternalField(0, v8::External::New(holder)); // Holder
+        obj->SetInternalField(0, v8::External::New(holder.get())); // Holder
         obj->SetInternalField(1, v8::Object::New()); // Object
         v8::Persistent<v8::Object> p = v8::Persistent<v8::Object>::New(obj);
         bsonHolderTracker.track(p, holder);
