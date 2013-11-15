@@ -133,7 +133,7 @@ namespace mongo {
         /// Change batchSize after construction. Can change after requesting first batch.
         void setBatchSize(int newBatchSize) { batchSize = newBatchSize; }
 
-        DBClientCursor( DBClientBase* client, const string &_ns, BSONObj _query, int _nToReturn,
+        DBClientCursor( shared_ptr<DBClientBase> client, const string &_ns, BSONObj _query, int _nToReturn,
                         int _nToSkip, const BSONObj *_fieldsToReturn, int queryOptions , int bs ) :
             _client(client),
             ns(_ns),
@@ -151,7 +151,7 @@ namespace mongo {
             _finishConsInit();
         }
 
-        DBClientCursor( DBClientBase* client, const string &_ns, long long _cursorId, int _nToReturn, int options ) :
+        DBClientCursor( shared_ptr<DBClientBase> client, const string &_ns, long long _cursorId, int _nToReturn, int options ) :
             _client(client),
             ns(_ns),
             nToReturn( _nToReturn ),
@@ -220,7 +220,7 @@ namespace mongo {
         void _finishConsInit();
         
         Batch batch;
-        DBClientBase* _client;
+        shared_ptr<DBClientBase> _client;
         string _originalHost;
         string ns;
         BSONObj query;

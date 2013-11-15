@@ -144,10 +144,10 @@ namespace mongo {
             scoped_ptr<ScopedDbConnection> conn(
                     ScopedDbConnection::getScopedDbConnection( _scopedHost ) );
             conn->get()->call( toSend , *response );
-            _client = conn->get();
+            _client.reset(conn->get());
             this->batch.m = response;
             dataReceived();
-            _client = 0;
+            _client.reset();
             conn->done();
         }
     }
@@ -306,7 +306,7 @@ namespace mongo {
         }
 
         conn->done();
-        _client = 0;
+        _client.reset();
         _lazyHost = "";
     }
 
