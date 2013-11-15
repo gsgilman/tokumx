@@ -130,8 +130,7 @@ namespace mongo {
             return v8AssertionException(errmsg);
         }
 
-        DBClientWithCommands* conn;
-        conn = cs.connect(errmsg);
+        shared_ptr<DBClientWithCommands> conn (cs.connect(errmsg));
         if (!conn) {
             return v8AssertionException(errmsg);
         }
@@ -156,7 +155,7 @@ namespace mongo {
                 args.IsConstructCall());
         verify(scope->MongoFT()->HasInstance(args.This()));
 
-        DBClientBase* conn = createDirectClient();
+        shared_ptr<DBClientBase> conn (createDirectClient());
         v8::Persistent<v8::Object> self = v8::Persistent<v8::Object>::New(args.This());
         scope->dbClientBaseTracker.track(self, conn);
 
@@ -191,13 +190,12 @@ namespace mongo {
         if (haveFields)
             fields = scope->v8ToMongo(args[2]->ToObject());
 
-        auto_ptr<mongo::DBClientCursor> cursor;
         int nToReturn = args[3]->Int32Value();
         int nToSkip = args[4]->Int32Value();
         int batchSize = args[5]->Int32Value();
         int options = args[6]->Int32Value();
-        cursor = conn->query(ns, q,  nToReturn, nToSkip, haveFields ? &fields : NULL,
-                                options, batchSize);
+        shared_ptr<mongo::DBClientCursor> cursor (conn->query(ns, q,  nToReturn, nToSkip, haveFields ? &fields : NULL,
+                                options, batchSize));
         if (!cursor.get()) {
             return v8AssertionException("error doing query: failed");
         }
@@ -205,7 +203,7 @@ namespace mongo {
         v8::Handle<v8::Function> cons = scope->InternalCursorFT()->GetFunction();
         v8::Persistent<v8::Object> c = v8::Persistent<v8::Object>::New(cons->NewInstance());
         c->SetInternalField(0, v8::External::New(cursor.get()));
-        scope->dbClientCursorTracker.track(c, cursor.release());
+        scope->dbClientCursorTracker.track(c, cursor);
         return c;
     }
 
@@ -218,7 +216,7 @@ namespace mongo {
         const string ns = toSTLString(args[0]);
         long long cursorId = numberLongVal(scope, args[1]->ToObject());
 
-        auto_ptr<mongo::DBClientCursor> cursor(new DBClientCursor(conn, ns, cursorId, 0, 0));
+        shared_ptr<mongo::DBClientCursor> cursor(new DBClientCursor(conn, ns, cursorId, 0, 0));
 
         if (!args[2]->IsUndefined())
             cursor->setBatchSize(args[2]->Int32Value());
@@ -226,7 +224,7 @@ namespace mongo {
         v8::Handle<v8::Function> cons = scope->InternalCursorFT()->GetFunction();
         v8::Persistent<v8::Object> c = v8::Persistent<v8::Object>::New(cons->NewInstance());
         c->SetInternalField(0, v8::External::New(cursor.get()));
-        scope->dbClientCursorTracker.track(c, cursor.release());
+        scope->dbClientCursorTracker.track(c, cursor);
         return c;
     }
 

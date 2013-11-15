@@ -62,7 +62,7 @@ namespace mongo {
          * @param  instanceHandle  persistent handle to the weakly referenced object
          * @param  rawData         pointer to the object instance
          */
-        void track(v8::Persistent<v8::Value> instanceHandle, _ObjType* instance) {
+        void track(v8::Persistent<v8::Value> instanceHandle, shared_ptr<_ObjType> instance) {
             TrackedPtr* collectionHandle = new TrackedPtr(instance, this);
             _container.insert(collectionHandle);
             instanceHandle.MakeWeak(collectionHandle, deleteOnCollect);
@@ -89,10 +89,10 @@ namespace mongo {
          */
         struct TrackedPtr {
         public:
-            TrackedPtr(_ObjType* instance, ObjTracker<_ObjType>* tracker) :
+            TrackedPtr(shard_ptr<_ObjType> instance, ObjTracker<_ObjType>* tracker) :
                 _objPtr(instance),
                 _tracker(tracker) { }
-            scoped_ptr<_ObjType> _objPtr;
+            shared_ptr<_ObjType> _objPtr;
             ObjTracker<_ObjType>* _tracker;
         };
 

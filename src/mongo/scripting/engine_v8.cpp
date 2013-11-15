@@ -68,7 +68,7 @@ namespace mongo {
         verify(LazyBsonFT()->HasInstance(obj));
 
         // Nothing below throws
-        BSONHolder* holder = new BSONHolder(data);
+        shared_ptr<BSONHolder> holder (new BSONHolder(data));
         holder->_readOnly = readOnly;
         holder->_scope = this;
         obj->SetInternalField(0, v8::External::New(holder)); // Holder
