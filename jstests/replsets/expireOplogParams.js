@@ -22,7 +22,7 @@ doTest = function( signal ) {
   x = master.runCommand({replGetExpireOplog:1});
   assert(x.expireOplogDays == 2);
   assert(x.expireOplogHours == 4);
-sadf
+
   replTest.stopSet(15);
 }
 
