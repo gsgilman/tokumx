@@ -42,6 +42,7 @@ namespace mongo {
             const BSONObj &obj = objs[i];
             try {
                 uassert( 10059 , "object to insert too large", obj.objsize() <= BSONObjMaxUserSize);
+                uassert( 17219, "cannot insert into reserved $ collection", NamespaceString::normal(ns) );
                 BSONObjIterator i( obj );
                 while ( i.more() ) {
                     BSONElement e = i.next();

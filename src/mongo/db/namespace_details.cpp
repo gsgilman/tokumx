@@ -249,6 +249,70 @@ namespace mongo {
         }
     };
 
+    class PartitionedCollection : public NamespaceDetails {
+    private:
+        static long long partitionFunction(const BSONObj &obj) {
+            // Uninteresting but predictible partitioning scheme.
+            return obj["partitionId"].numberLong();
+        }
+
+    public:
+        PartitionedCollection(const StringData &ns, const BSONObj &options) :
+            NamespaceDetails(ns, BSON("_id" << 1), options) {
+        }
+        PartitionedCollection(const BSONObj &serialized) :
+            NamespaceDetails(serialized) {
+        }
+
+        void insertObject(BSONObj &obj, uint64_t flags) {
+            NamespaceDetails *d = getPartition(obj);
+            d->insertObject(obj, flags);
+        }
+
+        void deleteObject(const BSONObj &pk, const BSONObj &obj, uint64_t flags) {
+            NamespaceDetails *d = getPartition(obj);
+            d->deleteObject(pk, obj, flags);
+        }
+
+        void updateObject(const BSONObj &pk, const BSONObj &oldObj, const BSONObj &newObj,
+                          const bool logop, const bool fromMigrate,
+                          uint64_t flags = 0) {
+            uasserted(17214, "Cannot update a partitioned collection");
+        }
+
+        void empty() {
+            uasserted(17220, "Cannot empty a partitioned collection");
+        }
+
+        void optimizeAll() {
+            uasserted(17221, "Cannot optimize a partitioned collection");
+        }
+
+        void optimizePK(const BSONObj &leftPK, const BSONObj &rightPK, uint64_t* loops_run) {
+            uasserted(17222, "Cannot optimize a partitioned collection");
+        }
+
+        bool dropIndexes(const StringData& ns, const StringData& name, string &errmsg,
+                         BSONObjBuilder &result, bool mayDeleteIdIndex) {
+            uasserted(17215, "Cannot drop a partitioned collection" );
+        }
+
+        void fillSpecificStats(BSONObjBuilder &result, int scale) const {
+            // TODO: Stats about the partitions
+        }
+
+    private:
+        NamespaceDetails *getPartition(const BSONObj &obj) {
+            const long long whichPartition = partitionFunction(obj);
+            const string ns = str::stream() << _ns << ".$" << whichPartition;
+            return nsdetails_maybe_create(ns.c_str());
+        }
+
+        void createIndex(const BSONObj &idx_info) {
+            uasserted(17216, "Cannot build indexes on a partitioned collection");
+        }
+    };
+
     class OplogCollection : public IndexedCollection {
     public:
         OplogCollection(const StringData &ns, const BSONObj &options) :
@@ -263,6 +327,7 @@ namespace mongo {
         OplogCollection(const BSONObj &serialized) :
             IndexedCollection(serialized) {
         }
+
         // @return the maximum safe key to read for a tailable cursor.
         BSONObj minUnsafeKey() {
             if (theReplSet && theReplSet->gtidManager) {
@@ -274,6 +339,12 @@ namespace mongo {
             else {
                 return minKey;
             }
+        }
+
+        void updateObject(const BSONObj &pk, const BSONObj &oldObj, const BSONObj &newObj,
+                          const bool logop, const bool fromMigrate,
+                          uint64_t flags = 0) {
+            uasserted(17217, "cannot update the oplog");
         }
     };
 
@@ -999,7 +1070,8 @@ namespace mongo {
         _multiKeyIndexBits(0),
         _qcWriteCount(0) {
 
-        massert( 10356 ,  str::stream() << "invalid ns: " << ns , NamespaceString::validCollectionName(ns));
+        // TODO: Put this check somewhere better, like ops/insert
+        //massert( 10356 ,  str::stream() << "invalid ns: " << ns , NamespaceString::validCollectionName(ns));
 
         TOKULOG(1) << "Creating NamespaceDetails " << ns << endl;
 
@@ -1036,6 +1108,8 @@ namespace mongo {
             return shared_ptr<NamespaceDetails>(new CappedCollection(ns, options));
         } else if (options["natural"].trueValue()) {
             return shared_ptr<NamespaceDetails>(new NaturalOrderCollection(ns, options));
+        } else if (options["partitioned"].trueValue()) {
+            return shared_ptr<NamespaceDetails>(new PartitionedCollection(ns, options));
         } else {
             return shared_ptr<NamespaceDetails>(new IndexedCollection(ns, options));
         }
@@ -1080,8 +1154,8 @@ namespace mongo {
     shared_ptr<NamespaceDetails> NamespaceDetails::make(const BSONObj &serialized, const bool bulkLoad) {
         const StringData ns = serialized["ns"].Stringdata();
         if (isOplogCollection(ns)) {
-            // We may bulk load the oplog since it's an IndexedCollection
-            return bulkLoad ? shared_ptr<NamespaceDetails>(new BulkLoadedCollection(serialized)) :
+            // TODO: Need to do something special for bulk loading partitioned collections.
+            return //bulkLoad ? shared_ptr<NamespaceDetails>(new BulkLoadedCollection(serialized)) :
                               shared_ptr<NamespaceDetails>(new OplogCollection(serialized));
         } else if (isSystemCatalog(ns)) {
             massert( 16869, "bug: Should not bulk load a system catalog collection", !bulkLoad );
@@ -1099,6 +1173,9 @@ namespace mongo {
         } else if (serialized["options"]["natural"].trueValue()) {
             massert( 16872, "bug: Should not bulk load natural order collections. ", !bulkLoad );
             return shared_ptr<NamespaceDetails>(new NaturalOrderCollection(serialized));
+        } else if (serialized["options"]["partitioned"].trueValue()) {
+            massert( 17218, "bug: Should not bulk load partitioned collections. ", !bulkLoad );
+            return shared_ptr<NamespaceDetails>(new PartitionedCollection(serialized));
         } else {
             // We only know how to bulk load indexed collections.
             return bulkLoad ? shared_ptr<NamespaceDetails>(new BulkLoadedCollection(serialized)) :
