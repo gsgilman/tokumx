@@ -367,7 +367,7 @@ namespace mongo {
         // may not read (at the time of this call) to guaruntee that all keys
         // strictly less than the minUnsafeKey is either committed or aborted.
         virtual BSONObj minUnsafeKey() {
-            massert(16864, "bug: should not call minUnsafeKey for collection that is not Oplog or capped", false);
+            msgasserted(16864, "bug: should not call minUnsafeKey for collection that is not Oplog or capped");
         }
 
         // Hack for ops/query.cpp queryIdHack.

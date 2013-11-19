@@ -725,25 +725,23 @@ again:      while ( !allInclusive && ok() ) {
         if ( ok() ) {
             // Advance one row further, and then check if we've went out of bounds.
             _advance();
-        } else {
-            if ( tailable() ) {
-                if ( _currKey < _endKey ) {
-                    // Read the most up-to-date minUnsafeKey from the namespace
-                    _endKey = _d->minUnsafeKey();
-                    _advance();
-                } else {
-                    // reset _currKey, we may have accidentally
-                    // gone past _endKey when we did our last advance
-                    // and saw something we are not allowed to see.
-                    _currKey = _endKey;
-                    // Read the most up-to-date minUnsafeKey from the namespace
-                    _endKey = _d->minUnsafeKey();
-                    findKey( _currKey.isEmpty() ? minKey : _currKey );
-                }
+        } else if ( tailable() ) {
+            if ( _currKey < _endKey ) {
+                // Read the most up-to-date minUnsafeKey from the namespace
+                _endKey = _d->minUnsafeKey();
+                _advance();
             } else {
-                // Exhausted cursors that are not tailable never advance
-                return false;
+                // reset _currKey, we may have accidentally
+                // gone past _endKey when we did our last advance
+                // and saw something we are not allowed to see.
+                _currKey = _endKey;
+                // Read the most up-to-date minUnsafeKey from the namespace
+                _endKey = _d->minUnsafeKey();
+                findKey( _currKey.isEmpty() ? minKey : _currKey );
             }
+        } else {
+            // Exhausted cursors that are not tailable never advance
+            return false;
         }
         // the key we are now positioned over may or may not be ok to read.
         // checkCurrentAgainstBounds() will decide.
