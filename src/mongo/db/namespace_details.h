@@ -348,6 +348,21 @@ namespace mongo {
             return false;
         }
 
+        // optional to implement, return true if the namespace is partitioned
+        virtual bool isPartitioned() const {
+            return false;
+        }
+
+        // optional to implement, return the underlying NamespaceDetails for the given obj
+        virtual NamespaceDetails *getPartition(const BSONObj &obj) const {
+            msgasserted(0, "bug: should not call getPartition for a collection that is not partitioned");
+        }
+
+        // optional to implement, return the underlying NamespaceDetails for a partition next to the given obj
+        virtual NamespaceDetails *nextPartition(const BSONObj &obj, int direction) const {
+            msgasserted(0, "bug: should not call nextPartition for a collection that is not partitioned");
+        }
+
         // optional to implement, return the minimum key a tailable cursor
         // may not read (at the time of this call) to guaruntee that all keys
         // strictly less than the minUnsafeKey is either committed or aborted.

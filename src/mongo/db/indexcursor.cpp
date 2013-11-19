@@ -813,6 +813,136 @@ again:      while ( !allInclusive && ok() ) {
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
+    PartitionedCursor::PartitionedCursor(NamespaceDetails *d,
+                                         const BSONObj &startKey, const BSONObj &endKey,
+                                         bool endKeyInclusive, int direction, int numWanted)
+            : _partitionedDetails(d),
+              _currPartition(d->getPartition(direction > 0 ? startKey : endKey)),
+              _currImpl(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
+                                          startKey, endKey, endKeyInclusive, direction, numWanted)),
+              _tailable(false),
+              _nscannedAlready(0) {}
+
+    PartitionedCursor::PartitionedCursor(NamespaceDetails *d,
+                                         const shared_ptr<FieldRangeVector> &bounds,
+                                         int singleIntervalLimit, int direction, int numWanted)
+            : _partitionedDetails(d),
+              _currPartition(d->getPartition(...)),  // TODO: is this case even possible?
+              _currImpl(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
+                                          bounds, singleIntervalLimit, direction, numWanted)),
+              _tailable(false),
+              _nscannedAlready(0) {}
+
+    shared_ptr<Cursor> PartitionedCursor::make(NamespaceDetails *d,
+                                               const BSONObj &startKey, const BSONObj &endKey,
+                                               bool endKeyInclusive, int direction,
+                                               int numWanted = 0) {
+        return shared_ptr<Cursor>(new PartitionedCursor(d, startKey, endKey, endKeyInclusive, direction, numWanted));
+    }
+
+    shared_ptr<Cursor> PartitionedCursor::make(NamespaceDetails *d,
+                                               const shared_ptr<FieldRangeVector> &bounds,
+                                               int singleIntervalLimit, int direction,
+                                               int numWanted = 0) {
+        return shared_ptr<Cursor>(new PartitionedCursor(d, bounds, singleIntervalLimit, direction, numWanted));
+    }
+
+    virtual bool PartitionedCursor::ok() {
+        return _currImpl && _currImpl->ok();
+    }
+
+    virtual BSONObj PartitionedCursor::current() {
+        return _currImpl->current();
+    }
+
+    virtual bool PartitionedCursor::advance() {
+        // Need to find a way to determine if _currImpl->advance() is going to exhaust the current
+        // partition before we decide whether we need to have the next partition ready.
+        // For now, this is cheaper than making a local copy of current().
+        NamespaceDetails *nd = _partitionedDetails->nextPartition(current(), direction);
+        BSONObj curr = _currImpl->current().getOwned();
+        bool ok = _currImpl->advance();
+        if (!ok) {
+            _nscannedAlready += _currImpl->nscanned();
+            _currPartition = nd;
+            _currImpl.reset(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
+                                              ...,  // TODO: not sure how to do this, easier if we are always
+                                                    // doing startKey/endKey probably
+                                              direction, numWanted));
+            if (!_currImpl) {
+                return false;
+            }
+            if (tailable()) {
+                _currImpl->setTailable();
+            }
+            ok = _currImpl->ok();
+        }
+        return ok;
+    }
+
+    virtual BSONObj PartitionedCursor::currKey() const {
+        return _currImpl->currKey();
+    }
+
+    virtual BSONObj PartitionedCursor::currPK() const {
+        return _currImpl->currPK();
+    }
+
+    virtual void PartitionedCursor::setTailable() {
+        _tailable = true;
+        if (_currImpl) {
+            _currImpl->setTailable();
+        }
+    }
+
+    virtual bool PartitionedCursor::tailable() const {
+        return _tailable;
+    }
+
+    virtual BSONObj PartitionedCursor::indexKeyPattern() const {
+        if (!_currImpl) {
+            // Is this right?
+            return BSONObj();
+        }
+        return _currImpl->indexKeyPattern();
+    }
+
+    virtual bool getsetdup(const BSONObj &pk) {
+        dassert(!isMultiKey());
+        return false;
+    }
+
+    virtual bool isMultiKey() const {
+        dassert(!_currImpl || !_currImpl->isMultiKey());
+        return false;
+    }
+
+    virtual bool modifiedKeys() const {
+        if (!_currImpl) {
+            // Is this right?
+            return false;
+        }
+        return _currImpl->modifiedKeys();
+    }
+
+    virtual BSONObj prettyIndexBounds() const {
+        if (!_currImpl) {
+            // Is this right?
+            return BSONObj();
+        }
+        return _currImpl->prettyIndexBounds();
+    }
+
+    virtual long long nscanned() const {
+        long long n = _nscannedAlready;
+        if (_currImpl) {
+            n += _currImpl->nscanned();
+        }
+        return n;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     IndexCountCursor::IndexCountCursor( NamespaceDetails *d, const IndexDetails &idx,
                                         const BSONObj &startKey, const BSONObj &endKey,
                                         const bool endKeyInclusive ) :

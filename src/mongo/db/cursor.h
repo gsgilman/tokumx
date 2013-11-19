@@ -499,6 +499,52 @@ namespace mongo {
     };
 
     /**
+     *
+     */
+    class PartitionedCursor : public Cursor {
+      public:
+        static shared_ptr<Cursor> make(NamespaceDetails *d,
+                                       const BSONObj &startKey, const BSONObj &endKey,
+                                       bool endKeyInclusive, int direction,
+                                       int numWanted = 0);
+        static shared_ptr<Cursor> make(NamespaceDetails *d,
+                                       const shared_ptr<FieldRangeVector> &bounds,
+                                       int singleIntervalLimit, int direction,
+                                       int numWanted = 0);
+        virtual ~PartitionedCounter();
+        virtual bool ok();
+        virtual BSONObj current();
+        virtual bool advance();
+        virtual BSONObj currKey() const;
+        virtual BSONObj currPK() const;
+        virtual void setTailable();
+        virtual bool tailable() const;
+        virtual BSONObj indexKeyPattern() const;
+        virtual string toString() const { return "PartitionedCursor"; }
+        virtual bool getsetdup(const BSONObj &pk);
+        virtual bool isMultiKey() const;
+        virtual bool modifiedKeys() const;
+        virtual BSONObj prettyIndexBounds() const;
+        virtual long long nscanned() const;
+        virtual void explainDetails(BSONObjBuilder &b) const;
+
+      protected:
+        PartitionedCursor(NamespaceDetails *d,
+                          const BSONObj &startKey, const BSONObj &endKey,
+                          bool endKeyInclusive, int direction, int numWanted);
+        PartitionedCursor(NamespaceDetails *d,
+                          const shared_ptr<FieldRangeVector> &bounds,
+                          int singleIntervalLimit, int direction, int numWanted);
+
+      private:
+        NamespaceDetails *_partitionedDetails;
+        NamespaceDetails *_currPartition;
+        shared_ptr<IndexCursor> _currImpl;
+        bool _tailable;
+        long long _nscannedAlready;
+    };
+
+    /**
      * Dummy cursor returning no results.
      * Can be used to represent a cursor over a non-existent collection.
      */

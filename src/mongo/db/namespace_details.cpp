@@ -301,11 +301,27 @@ namespace mongo {
             // TODO: Stats about the partitions
         }
 
-    private:
-        NamespaceDetails *getPartition(const BSONObj &obj) {
+        bool isPartitioned() const { return true; }
+
+        NamespaceDetails *getPartition(const BSONObj &obj) const {
             const long long whichPartition = partitionFunction(obj);
-            const string ns = str::stream() << _ns << ".$" << whichPartition;
-            return nsdetails_maybe_create(ns.c_str());
+            return partitionAt(whichPartition);
+        }
+
+        NamespaceDetails *nextPartition(const BSONObj &obj, int direction) const {
+            verify(direction != 0);
+            const long long whichPartition = partitionFunction(obj);
+            return partitionAt(whichPartition + (direction > 0 ? +1 : -1));
+        }
+
+    private:
+        NamespaceDetails *partitionAt(const long long idx) const {
+            const string ns = str::stream() << _ns << ".$" << idx;
+            if (Lock::isWriteLocked(ns)) {
+                return nsdetails_maybe_create(ns);
+            } else {
+                return nsdetails(ns);
+            }
         }
 
         void createIndex(const BSONObj &idx_info) {
