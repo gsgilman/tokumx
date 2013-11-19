@@ -609,7 +609,7 @@ namespace mongo {
                 errmsg = "ns not found";
                 return false;
             }
-            dropCollection( nsToDrop, errmsg, result );
+            d->drop(errmsg, result);
             return true;
         }
     } cmdDrop;
@@ -726,7 +726,7 @@ namespace mongo {
             if ( d ) {
                 BSONElement f = jsobj.getField("index");
                 if ( f.type() == String ) {
-                    return d->dropIndexes( toDeleteNs.c_str(), f.valuestr(), errmsg, anObjBuilder, false );
+                    return d->dropIndexes( f.valuestr(), errmsg, anObjBuilder, false );
                 }
                 else if ( f.type() == Object ) {
                     int idxId = d->findIndexByKeyPattern( f.embeddedObject() );
@@ -738,7 +738,7 @@ namespace mongo {
                     else {
                         IndexDetails& ii = d->idx( idxId );
                         string iName = ii.indexName();
-                        return d->dropIndexes( toDeleteNs.c_str(), iName.c_str() , errmsg, anObjBuilder, false );
+                        return d->dropIndexes( iName.c_str() , errmsg, anObjBuilder, false );
                     }
                 }
                 else {
@@ -845,7 +845,7 @@ namespace mongo {
             if (nsdetails(target)) {
                 uassert( 10027 ,  "target namespace exists", cmdObj["dropTarget"].trueValue() );
                 BSONObjBuilder bb( result.subobjStart( "dropTarget" ) );
-                dropCollection( target , errmsg , bb );
+                nsdetails(target)->drop( errmsg , bb );
                 bb.done();
                 if ( errmsg.size() > 0 )
                     return false;
@@ -922,7 +922,10 @@ namespace mongo {
 
             {
                 Client::Context ctx( source );
-                dropCollection( source, errmsg, result );
+                NamespaceDetails *d = nsdetails( source );
+                if ( d != NULL ) {
+                    d->drop( errmsg, result );
+                }
             }
             return true;
         }
