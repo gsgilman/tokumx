@@ -512,21 +512,50 @@ namespace mongo {
                                        int singleIntervalLimit, int direction,
                                        int numWanted = 0);
         virtual ~PartitionedCounter();
-        virtual bool ok();
-        virtual BSONObj current();
         virtual bool advance();
-        virtual BSONObj currKey() const;
-        virtual BSONObj currPK() const;
-        virtual void setTailable();
-        virtual bool tailable() const;
         virtual BSONObj indexKeyPattern() const;
-        virtual string toString() const { return "PartitionedCursor"; }
-        virtual bool getsetdup(const BSONObj &pk);
-        virtual bool isMultiKey() const;
+        virtual string toString() const;
         virtual bool modifiedKeys() const;
         virtual BSONObj prettyIndexBounds() const;
         virtual long long nscanned() const;
         virtual void explainDetails(BSONObjBuilder &b) const;
+
+        virtual bool ok() {
+            return _currImpl && _currImpl->ok();
+        }
+
+        virtual BSONObj current() {
+            return _currImpl->current();
+        }
+
+        virtual BSONObj currKey() const {
+            return _currImpl->currKey();
+        }
+
+        virtual BSONObj currPK() const {
+            return _currImpl->currPK();
+        }
+
+        virtual bool getsetdup(const BSONObj &pk) {
+            dassert(!isMultiKey());
+            return false;
+        }
+
+        virtual bool isMultiKey() const {
+            dassert(!_currImpl || !_currImpl->isMultiKey());
+            return false;
+        }
+
+        virtual bool tailable() const {
+            return _tailable;
+        }
+
+        virtual void setTailable() {
+            _tailable = true;
+            if (_currImpl) {
+                _currImpl->setTailable();
+            }
+        }
 
       protected:
         PartitionedCursor(NamespaceDetails *d,
@@ -540,6 +569,13 @@ namespace mongo {
         NamespaceDetails *_partitionedDetails;
         NamespaceDetails *_currPartition;
         shared_ptr<IndexCursor> _currImpl;
+        BSONObj _startKey;
+        BSONObj _endKey;
+        shared_ptr<FieldRangeVector> _bounds;
+        bool _endKeyInclusive;
+        bool _singleIntervalLimit;
+        int _direction;
+        int _numWanted;
         bool _tailable;
         long long _nscannedAlready;
     };

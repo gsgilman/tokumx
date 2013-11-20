@@ -818,6 +818,13 @@ again:      while ( !allInclusive && ok() ) {
               _currPartition(d->getPartition(direction > 0 ? startKey : endKey)),
               _currImpl(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
                                           startKey, endKey, endKeyInclusive, direction, numWanted)),
+              _startKey(startKey.getOwned()),
+              _endKey(endKey.getOwned()),
+              _bounds(NULL),
+              _endKeyInclusive(endKeyInclusive),
+              _singleIntervalLimit(0),
+              _direction(direction),
+              _numWanted(numWanted),
               _tailable(false),
               _nscannedAlready(0) {}
 
@@ -828,6 +835,13 @@ again:      while ( !allInclusive && ok() ) {
               _currPartition(d->getPartition(...)),  // TODO: is this case even possible?
               _currImpl(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
                                           bounds, singleIntervalLimit, direction, numWanted)),
+              _startKey(),
+              _endKey(),
+              _bounds(bounds),
+              _endKeyInclusive(false),
+              _singleIntervalLimit(singleIntervalLimit),
+              _direction(direction),
+              _numWanted(numWanted),
               _tailable(false),
               _nscannedAlready(0) {}
 
@@ -845,15 +859,7 @@ again:      while ( !allInclusive && ok() ) {
         return shared_ptr<Cursor>(new PartitionedCursor(d, bounds, singleIntervalLimit, direction, numWanted));
     }
 
-    virtual bool PartitionedCursor::ok() {
-        return _currImpl && _currImpl->ok();
-    }
-
-    virtual BSONObj PartitionedCursor::current() {
-        return _currImpl->current();
-    }
-
-    virtual bool PartitionedCursor::advance() {
+    bool PartitionedCursor::advance() {
         // Need to find a way to determine if _currImpl->advance() is going to exhaust the current
         // partition before we decide whether we need to have the next partition ready.
         // For now, this is cheaper than making a local copy of current().
@@ -863,10 +869,16 @@ again:      while ( !allInclusive && ok() ) {
         if (!ok) {
             _nscannedAlready += _currImpl->nscanned();
             _currPartition = nd;
-            _currImpl.reset(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
-                                              ...,  // TODO: not sure how to do this, easier if we are always
-                                                    // doing startKey/endKey probably
-                                              direction, numWanted));
+            if (_bounds) {
+                _currImpl.reset(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
+                                                  _bounds, _singleIntervalLimit,
+                                                  _direction, _numWanted));
+            } else {
+                _currImpl.reset(IndexCursor::make(_currPartition, _currPartition->getPKIndex(),
+                                                  _startKey, _endKey, _endKeyInclusive,
+                                                  direction, numWanted));
+            }
+
             if (!_currImpl) {
                 return false;
             }
@@ -878,26 +890,7 @@ again:      while ( !allInclusive && ok() ) {
         return ok;
     }
 
-    virtual BSONObj PartitionedCursor::currKey() const {
-        return _currImpl->currKey();
-    }
-
-    virtual BSONObj PartitionedCursor::currPK() const {
-        return _currImpl->currPK();
-    }
-
-    virtual void PartitionedCursor::setTailable() {
-        _tailable = true;
-        if (_currImpl) {
-            _currImpl->setTailable();
-        }
-    }
-
-    virtual bool PartitionedCursor::tailable() const {
-        return _tailable;
-    }
-
-    virtual BSONObj PartitionedCursor::indexKeyPattern() const {
+    BSONObj PartitionedCursor::indexKeyPattern() const {
         if (!_currImpl) {
             // Is this right?
             return BSONObj();
@@ -905,17 +898,7 @@ again:      while ( !allInclusive && ok() ) {
         return _currImpl->indexKeyPattern();
     }
 
-    virtual bool getsetdup(const BSONObj &pk) {
-        dassert(!isMultiKey());
-        return false;
-    }
-
-    virtual bool isMultiKey() const {
-        dassert(!_currImpl || !_currImpl->isMultiKey());
-        return false;
-    }
-
-    virtual bool modifiedKeys() const {
+    bool PartitionedCursor::modifiedKeys() const {
         if (!_currImpl) {
             // Is this right?
             return false;
@@ -923,20 +906,35 @@ again:      while ( !allInclusive && ok() ) {
         return _currImpl->modifiedKeys();
     }
 
-    virtual BSONObj prettyIndexBounds() const {
-        if (!_currImpl) {
-            // Is this right?
-            return BSONObj();
+    BSONObj PartitionedCursor::prettyIndexBounds() const {
+        if (_bounds) {
+            return _bounds->obj();
+        } else {
+            return BSON( "start" << prettyKey(_startKey) << "end" << prettyKey(_endKey) );
         }
-        return _currImpl->prettyIndexBounds();
     }
 
-    virtual long long nscanned() const {
+    long long PartitionedCursor::nscanned() const {
         long long n = _nscannedAlready;
         if (_currImpl) {
             n += _currImpl->nscanned();
         }
         return n;
+    }
+
+    string PartitionedCursor::toString() const {
+        stringstream ss;
+        if (_currPartition != NULL) {
+            dassert(_currPartition->getPKIndex().indexName() == StringData("_id_"));
+        }
+        ss << "PartitionedCursor _id_";
+        if (_direction < 0) {
+            ss << " reverse";
+        }
+        if (_bounds && _bounds->size() > 1) {
+            ss << " multi";
+        }
+        return ss.str();
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
