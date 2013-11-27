@@ -201,42 +201,9 @@ namespace mongo {
         }
     }
 
-    // STUPID HACK FOR NOW, just to get another constructor called
-    ClientCursor::ClientCursor(bool dummyArg, int queryOptions, const shared_ptr<Cursor>& c, const string& ns) :
-        _cursorid(INVALID_CURSOR_ID), _ns(ns), _db( cc().database() ),
-        _c(c), _pos(0),
-        _query(BSONObj()),  _queryOptions(queryOptions),
-        _slaveReadTillTS(0),
-        _idleAgeMillis(0), _pinValue(0),
-        _partOfMultiStatementTxn(false) {
-
-        Lock::assertAtLeastReadLocked(ns);
-
-        verify( _db );
-        verify( str::startsWith(_ns, _db->name()) );
-        if( queryOptions & QueryOption_NoCursorTimeout )
-            noTimeout();
-        
-        if ( ! _c->modifiedKeys() ) {
-            // store index information so we can decide if we can
-            // get something out of the index key rather than full object
-
-            int x = 0;
-            BSONObjIterator i( _c->indexKeyPattern() );
-            while ( i.more() ) {
-                BSONElement e = i.next();
-                if ( e.isNumber() ) {
-                    // only want basic index fields, not "2d" etc
-                    _indexedFields[e.fieldName()] = x;
-                }
-                x++;
-            }
-        }
-    }
-
     
     ClientCursor::ClientCursor(int queryOptions, const shared_ptr<Cursor>& c, const string& ns,
-                               BSONObj query, const bool inMultiStatementTxn ) :
+                               BSONObj query, const bool inMultiStatementTxn, bool createCursorID ) :
         _cursorid(INVALID_CURSOR_ID), _ns(ns), _db( cc().database() ),
         _c(c), _pos(0),
         _query(query),  _queryOptions(queryOptions),
@@ -266,7 +233,9 @@ namespace mongo {
                 x++;
             }
         }
-        initCursorID();
+        if (createCursorID) {
+            initCursorID();
+        }
     }
 
     ClientCursor::~ClientCursor() {
