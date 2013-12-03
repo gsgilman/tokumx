@@ -483,6 +483,9 @@ namespace mongo {
         /** @return starting point for an index traversal. */
         BSONObj startKey() const;
 
+        /** @return true if the startKey() bound is inclusive. */
+        bool startKeyInclusive() const;
+
         /** @return end point for an index traversal. */
         BSONObj endKey() const;
 
@@ -769,7 +772,7 @@ namespace mongo {
         if( strcmp("_id", e.fieldName()) != 0 ) 
             return false;
         
-        if ( e.isSimpleType() ) // e.g. not something like { _id : { $gt : ...
+        if ( e.isSimpleType() ) // e.g. not something like { _id : { $gt : ... } }
             return true;
         
         if ( e.type() == Object )
@@ -778,22 +781,6 @@ namespace mongo {
         return false;
     }
 
-    inline BSONObj getSimpleIdQuery( const BSONObj &query ) {
-        for (BSONObjIterator i(query); i.more(); ) {
-            const BSONElement &e = i.next();
-            if (e.isSimpleType() && strcmp(e.fieldName(), "_id") == 0) {
-                if (e.type() == Object && e.Obj().firstElementFieldName()[0] == '$') {
-                    return BSONObj();
-                }
-                if (query.nFields() == 1) {
-                    return query;
-                }
-                return e.wrap();
-            }
-        }
-        return BSONObj();
-    }
-    
     inline bool FieldInterval::equality() const {
         if ( _cachedEquality == -1 ) {
             _cachedEquality = ( _lower._inclusive && _upper._inclusive && _lower._bound.woCompare( _upper._bound, false ) == 0 );
