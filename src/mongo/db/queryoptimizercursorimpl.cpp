@@ -320,7 +320,8 @@ namespace mongo {
         if ( _planPolicy.permitOptimalNaturalPlan() && _query.isEmpty() && _order.isEmpty() ) {
             // Table-scan
             NamespaceDetails *d = nsdetails(_ns);
-            if ( d != NULL && _planPolicy.requestCountingCursor() ) {
+            // XXX partitioned collections do not have fast-count goodness
+            if ( d != NULL && _planPolicy.requestCountingCursor() && !d->partitioned() ) {
                 // All one-to-one indexes indexes have the same count.
                 //
                 // Utilize an IndexScanCountCursor over the smallest one

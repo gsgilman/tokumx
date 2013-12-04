@@ -79,7 +79,10 @@ namespace QueryOptimizerTests {
     void dropCollection( const char *ns ) {
      	string errmsg;
         BSONObjBuilder result;
-        dropCollection( ns, errmsg, result );
+        NamespaceDetails *d;
+        if (d != NULL) {
+            d->drop(errmsg, result);
+        }
     }
     
     namespace QueryPlanTests {

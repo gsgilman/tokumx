@@ -352,6 +352,11 @@ namespace mongo {
             return false;
         }
 
+        // optional to implement, return true if the namespace is partitioned
+        virtual bool partitioned() const {
+            return false;
+        }
+
         // optional to implement, return the minimum key a tailable cursor
         // may not read (at the time of this call) to guaruntee that all keys
         // strictly less than the minUnsafeKey is either committed or aborted.

@@ -65,9 +65,91 @@ namespace mongo {
         }
     }
 
+    class PartitionedCursor : public Cursor {
+    public:
+        PartitionedCursor(NamespaceDetails *d, int direction) :
+            _d(d),
+            _direction(direction),
+            _ok(false) {
+            verify(_d);
+            // HACK Determing partitions will soon be less of a hack
+            const string firstPartitionNS = str::stream() << _d->ns() << ".$" << 0;
+            NamespaceDetails *currentNS = nsdetails(firstPartitionNS);
+            _currentCursor = BasicCursor::make(currentNS, direction);
+            _ok = _currentCursor->ok();
+        }
+
+        virtual ~PartitionedCursor() { }
+
+        bool ok() {
+            return _ok;
+        }
+
+        BSONObj current() {
+            return _currentCursor->current();
+        }
+
+        bool advance() {
+            const bool advanced = _currentCursor->advance();
+            if (!advanced) {
+                // TODO: Try the next partition before bailing out
+                _ok = false;
+            }
+            return ok();
+        }
+
+        BSONObj currKey() const {
+            return _currentCursor->currKey();
+        }
+
+        BSONObj currPK() const {
+            return _currentCursor->currPK();
+        }
+
+        void setTailable() {
+
+        }
+        bool tailable() const {
+            return false;
+        }
+
+        string toString() const { return "PartitionedCursor"; }
+
+        bool getsetdup(const BSONObj &pk) {
+            return false;
+        }
+        bool isMultiKey() const {
+            return false;
+        }
+        bool modifiedKeys() const {
+            return false;
+        }
+
+        long long nscanned() const {
+            return 0;
+        }
+
+        void setMatcher( shared_ptr< CoveredIndexMatcher > matcher ) {
+
+        }
+
+        void setKeyFieldsOnly( const shared_ptr<Projection::KeyOnly> &keyFieldsOnly ) {
+
+        }
+    private:
+        NamespaceDetails *_d;
+        shared_ptr<Cursor> _currentCursor;
+        const int _direction;
+        bool _ok;
+    };
+
     shared_ptr<Cursor> BasicCursor::make( NamespaceDetails *d, int direction ) {
         if ( d != NULL ) {
-            return shared_ptr<Cursor>(new BasicCursor(d, direction));
+            if ( d->partitioned() ) {
+                return shared_ptr<Cursor>(new PartitionedCursor(d, direction));
+            } else {
+                return shared_ptr<Cursor>(new BasicCursor(d, direction));
+            }
         } else {
             return shared_ptr<Cursor>(new DummyCursor(direction));
         }

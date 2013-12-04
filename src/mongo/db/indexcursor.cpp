@@ -154,6 +154,7 @@ namespace mongo {
                                                const BSONObj &startKey, const BSONObj &endKey,
                                                bool endKeyInclusive, int direction,
                                                int numWanted ) {
+        uassert(17235, "Indexed plans not yet available over partitioned collections", !d->partitioned());
         return shared_ptr<IndexCursor>( new IndexCursor( d, idx, startKey, endKey,
                                                          endKeyInclusive, direction,
                                                          numWanted ) );
@@ -163,6 +164,7 @@ namespace mongo {
                                                const shared_ptr< FieldRangeVector > &bounds,
                                                int singleIntervalLimit, int direction,
                                                int numWanted ) {
+        uassert(17236, "Indexed plans not yet available over partitioned collections", !d->partitioned());
         return shared_ptr<IndexCursor>( new IndexCursor( d, idx, bounds,
                                                          singleIntervalLimit, direction,
                                                          numWanted ) );

@@ -252,54 +252,102 @@ namespace mongo {
 
     class PartitionedCollection : public NamespaceDetails {
     private:
-        static long long partitionFunction(const BSONObj &obj) {
-            // Uninteresting but predictible partitioning scheme.
-            return obj["partitionId"].numberLong();
+        static long long partitionFunction(const BSONElement &e, const long long elementsPerPartition) {
+            const long long n = e.numberLong();
+            return n / elementsPerPartition;
         }
 
     public:
         PartitionedCollection(const StringData &ns, const BSONObj &options) :
-            NamespaceDetails(ns, BSON("_id" << 1), options) {
+            NamespaceDetails(ns, BSON("_id" << 1), options),
+            _elementsPerPartition(_options["partitioned"].numberLong()),
+            _partitionMapRWLock("partitionMap") {
+            uassert(17238, "partition specification must be a number > 0 specifying elements per partition",
+                           _elementsPerPartition);
         }
         PartitionedCollection(const BSONObj &serialized) :
-            NamespaceDetails(serialized) {
+            NamespaceDetails(serialized),
+            _elementsPerPartition(_options["partitioned"].numberLong()),
+            _partitionMapRWLock("partitionMap") {
+            verify(_elementsPerPartition);
+        }
+
+        bool partitioned() const {
+            return true;
         }
 
         void insertObject(BSONObj &obj, uint64_t flags) {
-            NamespaceDetails *d = getPartition(obj);
+            NamespaceDetails *d = getOrCreatePartition(obj);
             d->insertObject(obj, flags);
         }
 
         void deleteObject(const BSONObj &pk, const BSONObj &obj, uint64_t flags) {
-            NamespaceDetails *d = getPartition(obj);
-            d->deleteObject(pk, obj, flags);
+            uasserted(17227, "Cannot delete from a capped collection");
         }
 
         void updateObject(const BSONObj &pk, const BSONObj &oldObj, const BSONObj &newObj,
                           const bool logop, const bool fromMigrate,
                           uint64_t flags = 0) {
-            uasserted(17214, "Cannot update a partitioned collection");
+            uasserted(17234, "Cannot update a partitioned collection");
+        }
+
+        void updateObjectMods(const BSONObj &pk, const BSONObj &updateobj,
+                          const bool logop, const bool fromMigrate,
+                          uint64_t flags = 0) {
+            uasserted(17228, "Cannot update a partitioned collection" );
         }
 
         void empty() {
-            uasserted(17220, "Cannot empty a partitioned collection");
+            uasserted(17222, "Cannot empty a partitioned collection");
         }
 
         void optimizeAll() {
-            uasserted(17221, "Cannot optimize a partitioned collection");
+            uasserted(17223, "Cannot optimize a partitioned collection");
         }
 
         void optimizePK(const BSONObj &leftPK, const BSONObj &rightPK, uint64_t* loops_run) {
-            uasserted(17222, "Cannot optimize a partitioned collection");
+            uasserted(17224, "Cannot optimize a partitioned collection");
         }
 
         bool dropIndexes(const StringData& name, string &errmsg,
                          BSONObjBuilder &result, bool mayDeleteIdIndex) {
-            uasserted(17215, "Cannot drop a partitioned collection");
+            if (mayDeleteIdIndex) {
+                return NamespaceDetails::dropIndexes(name, errmsg, result, mayDeleteIdIndex);
+            } else {
+                // No indexes to drop.
+                return true;
+            }
         }
 
         void drop(string &errmsg, BSONObjBuilder &result, const bool mayDropSystem = false) {
-            uasserted(17223, "Cannot drop a partitioned collection");
+
+            // Drop our partitions
+            // Find them in system.namespaces, beginning with our ns + .$
+            BSONObjBuilder b;
+            const string nameRegex = str::stream() << "^" << _ns << ".\\$";
+            b.appendRegex("name", nameRegex);
+            BSONObj query = b.done();
+            LOG(0) << "drop: using name regex " << query << endl;
+
+            vector<string> names;
+            const string sysNamespaces = getSisterNS(_ns, "system.namespaces");
+            for (shared_ptr<Cursor> c(getOptimizedCursor(sysNamespaces, query));
+                 c->ok(); c->advance()) {
+                if (c->currentMatches()) {
+                    const string name = c->current()["name"].String();
+                    names.push_back(name);
+                }
+            }
+            for (vector<string>::const_iterator i = names.begin(); i != names.end(); i++) {
+                NamespaceDetails *d = nsdetails(*i);
+                if (d != NULL) {
+                    LOG(0) << "drop: dropping partition " << *i << endl;
+                    d->drop(errmsg, result);
+                }
+            }
+
+            // Drop ourselves
+            NamespaceDetails::drop(errmsg, result, mayDropSystem);
         }
 
         void fillSpecificStats(BSONObjBuilder &result, int scale) const {
@@ -307,22 +355,52 @@ namespace mongo {
         }
 
     private:
-        NamespaceDetails *getPartition(const BSONObj &obj) {
-            const long long whichPartition = partitionFunction(obj);
-            const string ns = str::stream() << _ns << ".$" << whichPartition;
-            return nsdetails_maybe_create(ns.c_str());
+        // TODO: This is all pretty dirty - clean it up eventually.
+        NamespaceDetails *getOrCreatePartition(const BSONObj &obj) {
+            const BSONObj &pk = getValidatedPKFromObject(obj);
+            const BSONElement &e = pk.firstElement();
+            uassert(17237, "Primary key in a partitioned collection must be a numeric type",
+                            e.isNumber());
+
+            const long long whichPartition = partitionFunction(e, _elementsPerPartition);
+            PartitionMap::iterator it;
+            {
+                SimpleRWLock::Shared lk(_partitionMapRWLock);
+                it = _partitionMap.find(whichPartition);
+            }
+
+            if (it == _partitionMap.end()) {
+                SimpleRWLock::Exclusive lk(_partitionMapRWLock);
+                it = _partitionMap.find(whichPartition);
+                if (it != _partitionMap.end()) {
+                    // another thread beat us to the open/create
+                    return it.second();
+                }
+                const string ns = str::stream() << _ns << ".$" << whichPartition;
+                NamespaceDetails *partition = nsdetails_maybe_create(ns);
+            }
+            return it.second();
         }
 
         void createIndex(const BSONObj &idx_info) {
-            uasserted(17216, "Cannot build indexes on a partitioned collection");
+            uasserted(17232, "Cannot build indexes on a partitioned collection");
         }
+
+        const long long _elementsPerPartition;
+
+        // NamespaceDetails that live in this map are guaranteed to stay valid
+        // because they can only be dropped by the PartitionedCollection
+        typedef map< long long, NamespaceDetails * > PartitionMap;
+        PartitionMap _partitionMap;
+        SimpleRWLock _partitionMapRWLock;
+        friend class PartitionedCursor;
     };
 
     class OplogCollection : public IndexedCollection {
     public:
         OplogCollection(const StringData &ns, const BSONObj &options) :
             IndexedCollection(ns, options) {
-            uassert(17206, "must not define a primary key for the oplog",
+            uassert(17233, "must not define a primary key for the oplog",
                            !options["primaryKey"].ok());
         } 
         // Important: BulkLoadedCollection relies on this constructor
@@ -349,7 +427,7 @@ namespace mongo {
         void updateObject(const BSONObj &pk, const BSONObj &oldObj, const BSONObj &newObj,
                           const bool logop, const bool fromMigrate,
                           uint64_t flags = 0) {
-            uasserted(17217, "cannot update the oplog");
+            uasserted(17229, "cannot update the oplog");
         }
     };
 
@@ -653,7 +731,7 @@ namespace mongo {
         void updateObjectMods(const BSONObj &pk, const BSONObj &updateobj,
                               const bool logop, const bool fromMigrate,
                               uint64_t flags) {
-            msgasserted(17217, "bug: cannot (fast) update a capped collection, "
+            msgasserted(17230, "bug: cannot (fast) update a capped collection, "
                                " should have been enforced higher in the stack" );
         }
 
@@ -1120,7 +1198,7 @@ namespace mongo {
             return shared_ptr<NamespaceDetails>(new CappedCollection(ns, options));
         } else if (options["natural"].trueValue()) {
             return shared_ptr<NamespaceDetails>(new NaturalOrderCollection(ns, options));
-        } else if (options["partitioned"].trueValue()) {
+        } else if (options["partitioned"].ok()) {
             return shared_ptr<NamespaceDetails>(new PartitionedCollection(ns, options));
         } else {
             return shared_ptr<NamespaceDetails>(new IndexedCollection(ns, options));
@@ -1186,8 +1264,8 @@ namespace mongo {
         } else if (serialized["options"]["natural"].trueValue()) {
             massert( 16872, "bug: Should not bulk load natural order collections. ", !bulkLoad );
             return shared_ptr<NamespaceDetails>(new NaturalOrderCollection(serialized));
-        } else if (serialized["options"]["partitioned"].trueValue()) {
-            massert( 17218, "bug: Should not bulk load partitioned collections. ", !bulkLoad );
+        } else if (serialized["options"]["partitioned"].ok()) {
+            massert( 17231, "bug: Should not bulk load partitioned collections. ", !bulkLoad );
             return shared_ptr<NamespaceDetails>(new PartitionedCollection(serialized));
         } else {
             // We only know how to bulk load indexed collections.

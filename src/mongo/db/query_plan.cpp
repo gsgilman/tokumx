@@ -274,7 +274,8 @@ doneCheckOrder:
         // represented by a single interval within the index. Because CountingIndexCursors
         // cannot provide meaningful results for currPK/currKey/current(), we must not
         // use them for multikey indexes where manual deduplication is required.
-        if (requestCountingCursor && _utility == Optimal && _frv->isSingleInterval() && !isMultiKey()) {
+        if (requestCountingCursor && _utility == Optimal && _frv->isSingleInterval() && !isMultiKey()
+            && !_d->partitioned()) { // XXX partitioned collections are not yet optimized for fast counts
             return shared_ptr<Cursor>( new IndexCountCursor( _d, *_index, _frv ) );
         }
 
