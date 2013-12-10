@@ -141,11 +141,20 @@ namespace mongo {
             DbMessage d(m);
             QueryMessage q(d);
             bool all = q.query["$all"].trueValue();
+            bool allMatching = q.query["$allMatching"].trueValue();
             vector<BSONObj> vals;
+            BSONObjBuilder qb;
+            for (BSONObjIterator it(q.query); it.more(); ) {
+                BSONElement e = it.next();
+                StringData fn(e.fieldName());
+                if (fn != "$all" && fn != "$allMatching") {
+                    qb.append(e);
+                }
+            }
             {
                 Client& me = cc();
                 scoped_lock bl(Client::clientsMutex);
-                scoped_ptr<Matcher> m(new Matcher(q.query));
+                scoped_ptr<Matcher> m(new Matcher(qb.done()));
                 for( set<Client*>::iterator i = Client::clients.begin(); i != Client::clients.end(); i++ ) {
                     Client *c = *i;
                     verify( c );
@@ -154,7 +163,7 @@ namespace mongo {
                         continue;
                     }
                     verify( co );
-                    if( all || co->displayInCurop() ) {
+                    if( all || allMatching || co->displayInCurop() ) {
                         BSONObj info = co->info();
                         if ( all || m->matches( info )) {
                             vals.push_back( info );
@@ -163,10 +172,6 @@ namespace mongo {
                 }
             }
             b.append("inprog", vals);
-            if( lockedForWriting() ) {
-                b.append("fsyncLock", true);
-                b.append("info", "use db.fsyncUnlock() to terminate the fsync write/snapshot lock");
-            }
         }
 
         replyToQuery(0, m, dbresponse, b.obj());
@@ -192,28 +197,6 @@ namespace mongo {
                 log() << "going to kill op: " << e << endl;
                 obj = fromjson("{\"info\":\"attempting to kill op\"}");
                 killCurrentOp.kill( (unsigned) e.number() );
-            }
-        }
-        replyToQuery(0, m, dbresponse, obj);
-    }
-
-    bool _unlockFsync();
-    void unlockFsync(const char *ns, Message& m, DbResponse &dbresponse) {
-        BSONObj obj;
-        if (!cc().getAuthorizationManager()->checkAuthorization(
-                AuthorizationManager::SERVER_RESOURCE_NAME, ActionType::unlock)) {
-            obj = fromjson("{\"err\":\"unauthorized\"}");
-        }
-        else if (strncmp(ns, "admin.", 6) != 0 ) {
-            obj = fromjson("{\"err\":\"unauthorized - this command must be run against the admin DB\"}");
-        }
-        else {
-            log() << "command: unlock requested" << endl;
-            if( _unlockFsync() ) {
-                obj = fromjson("{ok:1,\"info\":\"unlock completed\"}");
-            }
-            else {
-                obj = fromjson("{ok:0,\"errmsg\":\"not locked\"}");
             }
         }
         replyToQuery(0, m, dbresponse, obj);
@@ -350,7 +333,9 @@ namespace mongo {
                         return;
                     }
                     if( strstr(ns, "$cmd.sys.unlock") ) {
-                        unlockFsync(ns, m, dbresponse);
+                        // Reply to this deprecated operation with the standard "not locked"
+                        // error for legacy reasons.
+                        replyToQuery(0, m, dbresponse, BSON("ok" << 0 << "errmsg" << "not locked"));
                         return;
                     }
                 }
@@ -392,11 +377,13 @@ namespace mongo {
         bool shouldLog = logLevel >= 1;
 
         if ( op == dbQuery ) {
-            Client::ShardedOperationScope sc;
-            if (sc.handlePossibleShardedMessage(m, &dbresponse)) {
+            try {
+                checkPossiblyShardedMessageWithoutLock(m);
+                receivedQuery(c, dbresponse, m);
+            } catch (MustHandleShardedMessage &e) {
+                e.handleShardedMessage(m, &dbresponse);
                 return;
             }
-            receivedQuery(c, dbresponse, m);
         }
         else if ( op == dbGetMore ) {
             if ( ! receivedGetMore(dbresponse, m, currentOp) )
@@ -477,9 +464,6 @@ namespace mongo {
             // performance profiling is on
             if ( Lock::isReadLocked() ) {
                 LOG(1) << "note: not profiling because recursive read lock" << endl;
-            }
-            else if ( lockedForWriting() ) {
-                LOG(1) << "note: not profiling because doing fsync+lock" << endl;
             }
             else {
                 try {

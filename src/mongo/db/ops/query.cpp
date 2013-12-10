@@ -1000,10 +1000,6 @@ namespace mongo {
         scoped_ptr<Client::Transaction> transaction(!inMultiStatementTxn ?
                                                     new Client::Transaction(txnFlags) : NULL);
 
-        // At this point, we have a snapshot transaction, so it's safe to leave the
-        // ShardedOperationScope, since MVCC will allow us to read anything that migrates away.
-        cc().leaveShardedOperationScope();
-
         bool hasRetried = false;
         while ( 1 ) {
             try {

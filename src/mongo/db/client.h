@@ -127,11 +127,19 @@ namespace mongo {
          */
         class ShardedOperationScope : public boost::noncopyable {
             Client &_c;
+            bool _recursive;
+            void assertStillHasScope() const {
+                massert(17221, "not inside a ShardedOperationScope anymore", _c._scp);
+            }
           public:
             ShardedOperationScope();
             ~ShardedOperationScope();
+            void checkPossiblyShardedMessage(int op, const string &ns) const {
+                assertStillHasScope();
+                _c._scp->checkPossiblyShardedMessage(op, ns);
+            }
             bool handlePossibleShardedMessage(Message &m, DbResponse *dbresponse) const {
-                massert(17221, "not inside a ShardedOperationScope anymore", _c._scp);
+                assertStillHasScope();
                 return _c._scp->handlePossibleShardedMessage(m, dbresponse);
             }
         };
@@ -462,13 +470,18 @@ namespace mongo {
         return *c;
     }
 
-    inline Client::ShardedOperationScope::ShardedOperationScope() : _c(cc()) {
-        dassert(!_c._scp);
-        _c._scp.reset(new ShardingState::ShardedOperationScope);
+    inline Client::ShardedOperationScope::ShardedOperationScope() : _c(cc()), _recursive(false) {
+        if (_c._scp) {
+            _recursive = true;
+        } else {
+            _c._scp.reset(new ShardingState::ShardedOperationScope);
+        }
     }
 
     inline Client::ShardedOperationScope::~ShardedOperationScope() {
-        _c._scp.reset();
+        if (!_recursive) {
+            _c._scp.reset();
+        }
     }
 
     inline Client::WithTxnStack::WithTxnStack(shared_ptr<Client::TransactionStack> &stack) : _stack(stack), _released(false) {

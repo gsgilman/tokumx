@@ -154,14 +154,16 @@ namespace mongo {
 
         /** A scope in which client threads can read or write data without racing with a chunk
             version change.  The handlePossibleShardedMessage functionality is a method here to make
-            sure we only check it inside this scope.  Currently is just a shared lock of _rwlock.
-            This class's lifetime and access should be managed through
-            Client::ShardedOperationScope. */
+            sure we only check it inside this scope (except for queries, see below).  Currently is
+            just a shared lock of _rwlock.  This class's lifetime and access should be managed
+            through Client::ShardedOperationScope. */
         class ShardedOperationScope : public boost::noncopyable {
             scoped_ptr<RWLockRecursive::Shared> _lk;
           public:
             ShardedOperationScope();
-            bool handlePossibleShardedMessage(Message &m, DbResponse *dbresponse);
+            void checkPossiblyShardedMessage(int op, const string &ns) const;
+            void checkPossiblyShardedMessage(Message &m) const;
+            bool handlePossibleShardedMessage(Message &m, DbResponse *dbresponse) const;
         };
 
         /** A scope in which it is safe to modify the version information.  Current implementation
@@ -274,19 +276,70 @@ namespace mongo {
     bool shardVersionOk( const string& ns , string& errmsg, ConfigVersion& received, ConfigVersion& wanted );
 
     /**
-     * @return true if we took care of the message and nothing else should be done
+     * MustHandleShardedMessage encapsulates the information we need to return to the client when we detect a chunk version problem.
+     * We may need to pass this up the stack to where we have a DbResponse *, which is why this is implemented as an exception (see dbcommands.cpp).
      */
-    bool _handlePossibleShardedMessage( Message &m, DbResponse * dbresponse );
+    class MustHandleShardedMessage : public DBException {
+        string _shardingError;
+        ConfigVersion _received;
+        ConfigVersion _wanted;
+      public:
+        MustHandleShardedMessage(const string &shardingError, const ConfigVersion &received, const ConfigVersion &wanted)
+                : DBException("handle sharded message exception", 17222), // msgasserted(17222, "reserve 17222");
+                  _shardingError(shardingError),
+                  _received(received),
+                  _wanted(wanted) {}
+        virtual ~MustHandleShardedMessage() throw() {}
+        void handleShardedMessage(Message &m, DbResponse *dbresponse) const;
+    };
+
+    /**
+     * Checks for a chunk version mismatch between the current thread's ShardConnectionInfo and the chunk version for ns.
+     * If a mismatch is detected (and the op cares about that), throws MustHandleShardedMessage.
+     */
+    void _checkPossiblyShardedMessage(int op, const string &ns);
+
+    /**
+     * Gets the operation and ns from a Message and calls the above.
+     */
+    void _checkPossiblyShardedMessage(Message &m);
+
+    /**
+     * Queries check the shard version without a lock, and instead make sure the version doesn't change while the query is running,
+     * so they need to be able to check without holding the lock.
+     */
+    inline void checkPossiblyShardedMessageWithoutLock(Message &m) {
+        if (!shardingState.enabled()) {
+            return;
+        }
+        _checkPossiblyShardedMessage(m);
+    }
 
     inline ShardingState::ShardedOperationScope::ShardedOperationScope()
             : _lk(shardingState.enabled() ? new RWLockRecursive::Shared(shardingState._rwlock) : NULL) {}
 
-    /** What does this do? document please? */
-    inline bool ShardingState::ShardedOperationScope::handlePossibleShardedMessage(Message &m, DbResponse *dbresponse) {
+    inline void ShardingState::ShardedOperationScope::checkPossiblyShardedMessage(int op, const string &ns) const {
+        if (!shardingState.enabled()) {
+            return;
+        }
+        _checkPossiblyShardedMessage(op, ns);
+    }
+
+    /**
+     * Convenience function for emulating the old handlePossibleShardedMessage behavior, wrapping the exception implementation.
+     */
+    inline bool ShardingState::ShardedOperationScope::handlePossibleShardedMessage(Message &m, DbResponse *dbresponse) const {
         if (!shardingState.enabled()) {
             return false;
         }
-        return _handlePossibleShardedMessage(m, dbresponse);
+        try {
+            _checkPossiblyShardedMessage(m);
+            return false;
+        }
+        catch (MustHandleShardedMessage &e) {
+            e.handleShardedMessage(m, dbresponse);
+            return true;
+        }
     }
 
     inline ShardingState::SetVersionScope::SetVersionScope()

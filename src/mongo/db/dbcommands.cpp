@@ -39,6 +39,7 @@
 #include "mongo/db/introspect.h"
 #include "mongo/db/cursor.h"
 #include "mongo/db/json.h"
+#include "mongo/db/keypattern.h"
 #include "mongo/db/kill_current_op.h"
 #include "mongo/db/repl.h"
 #include "mongo/db/repl_block.h"
@@ -423,6 +424,7 @@ namespace mongo {
         }
         // Need access to the database to enable profiling on it
         virtual bool slaveOk() const { return true; }
+        virtual bool requiresShardedOperationScope() const { return false; }
         virtual LockType locktype() const { return NONE; }
         virtual bool requiresSync() const { return false; }
         virtual bool needsTxn() const { return false; }
@@ -538,6 +540,7 @@ namespace mongo {
     public:
         CmdCheckpoint() : Command("checkpoint") {}
         virtual bool slaveOk() const { return true; }
+        virtual bool requiresShardedOperationScope() const { return false; }
         virtual LockType locktype() const { return NONE; }
         virtual bool requiresSync() const { return true; }
         virtual bool needsTxn() const { return false; }
@@ -936,6 +939,7 @@ namespace mongo {
     public:
         virtual bool slaveOk() const { return true; }
         virtual bool slaveOverrideOk() const { return true; }
+        virtual bool requiresShardedOperationScope() const { return false; }
         virtual bool adminOnly() const { return true; }
         virtual LockType locktype() const { return READ; }
         virtual bool lockGlobally() const { return true; }
@@ -1211,7 +1215,7 @@ namespace mongo {
 
                 if ( keyPattern.isEmpty() ){
                     // if keyPattern not provided, try to infer it from the fields in 'min'
-                    keyPattern = Helpers::inferKeyPattern( min );
+                    keyPattern = KeyPattern::inferKeyPattern( min );
                 }
 
                 const IndexDetails *idx = d->findIndexByPrefix( keyPattern ,
@@ -1222,8 +1226,8 @@ namespace mongo {
                 }
                 // If both min and max non-empty, append MinKey's to make them fit chosen index
                 KeyPattern kp( idx->keyPattern() );
-                min = Helpers::toKeyFormat( kp.extendRangeBound( min, false ) );
-                max = Helpers::toKeyFormat( kp.extendRangeBound( max, false ) );
+                min = KeyPattern::toKeyFormat( kp.extendRangeBound( min, false ) );
+                max = KeyPattern::toKeyFormat( kp.extendRangeBound( max, false ) );
 
                 c = IndexCursor::make( d, *idx, min, max, false, 1 );
             }
@@ -1518,6 +1522,26 @@ namespace mongo {
         return Status::OK();
     }
 
+    class ObjectIdTest : public InformationCommand {
+    public:
+        ObjectIdTest() : InformationCommand( "driverOIDTest" ) {}
+        virtual void addRequiredPrivileges(const std::string& dbname,
+                                           const BSONObj& cmdObj,
+                                           std::vector<Privilege>* out) {} // No auth required
+        virtual bool run(const string& , BSONObj& cmdObj, int, string& errmsg, BSONObjBuilder& result, bool fromRepl) {
+            if ( cmdObj.firstElement().type() != jstOID ) {
+                errmsg = "not oid";
+                return false;
+            }
+
+            const OID& oid = cmdObj.firstElement().__oid();
+            result.append( "oid" , oid );
+            result.append( "str" , oid.str() );
+
+            return true;
+        }
+    } driverObjectIdTest;
+
     // Testing-only, enabled via command line.
     class EmptyCapped : public ModifyCommand {
     public:
@@ -1707,8 +1731,10 @@ namespace mongo {
             uassert(16786, "cannot run command inside of multi statement transaction", !cc().hasTxn());
         }
 
-        if (!c->requiresShardedOperationScope()) {
-            cc().leaveShardedOperationScope();
+        scoped_ptr<Client::ShardedOperationScope> scp;
+        if (c->requiresShardedOperationScope()) {
+            scp.reset(new Client::ShardedOperationScope);
+            scp->checkPossiblyShardedMessage(dbQuery, cmdns);
         }
 
         std::string errmsg;

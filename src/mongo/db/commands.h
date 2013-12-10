@@ -256,6 +256,7 @@ namespace mongo {
       public:
         QueryCommand(const char *name, bool webUI=false, const char *oldName=NULL) : Command(name, webUI, oldName) {}
         virtual bool slaveOk() const { return true; }
+        virtual bool requiresShardedOperationScope() const { return false; }
         virtual LockType locktype() const { return READ; }
         virtual bool requiresSync() const { return false; }
         virtual bool needsTxn() const { return true; }
@@ -270,6 +271,7 @@ namespace mongo {
         InformationCommand(const char *name, bool webUI=false, const char *oldName=NULL) : Command(name, webUI, oldName) {}
         virtual bool slaveOk() const { return true; }
         virtual bool slaveOverrideOk() const { return true; }
+        virtual bool requiresShardedOperationScope() const { return false; }
         virtual LockType locktype() const { return NONE; }
         virtual bool requiresSync() const { return false; }
         virtual bool needsTxn() const { return false; }
@@ -321,6 +323,7 @@ namespace mongo {
             actions.addAction(ActionType::shutdown);
             out->push_back(Privilege(AuthorizationManager::SERVER_RESOURCE_NAME, actions));
         }
+        virtual bool requiresShardedOperationScope() const { return false; }
         virtual LockType locktype() const { return NONE; }
         virtual bool requiresSync() const { return false; }
         // Cannot have a transaction while shutting down the server.
