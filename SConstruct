@@ -513,14 +513,7 @@ if "darwin" == os.sys.platform:
 
     nix = True
 
-    if force64:
-       env.Append( EXTRACPPPATH=["/usr/64/include"] )
-       env.Append( EXTRALIBPATH=["/usr/64/lib"] )
-       if installDir == DEFAULT_INSTALL_DIR:
-           installDir = "/usr/64/"
-    else:
-       env.Append( EXTRACPPPATH=filterExists(["/sw/include" , "/opt/local/include"]) )
-       env.Append( EXTRALIBPATH=filterExists(["/sw/lib/", "/opt/local/lib"]) )
+    env.MergeFlags( [ os.getenv("CPPFLAGS"), os.getenv("LDFLAGS") ] )
 
 elif os.sys.platform.startswith("linux"):
     linux = True

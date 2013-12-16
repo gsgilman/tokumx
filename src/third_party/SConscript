@@ -1,10 +1,12 @@
 # -*- mode: python -*-
 
-Import("env use_system_version_of_library windows usesm usev8")
+Import("env use_system_version_of_library windows darwin usesm usev8")
 
 env.SConscript( [
         "murmurhash3/SConscript",
+        "s2/SConscript",
         ] )
+env.Append(CPPPATH='$BUILD_DIR/third_party/s2')
 
 if use_system_version_of_library("pcre"):
     env.StaticLibrary( "pcrecpp", ['shim_pcrecpp.cc'],
@@ -24,6 +26,13 @@ else:
                                  'boost/boost_thread',
                                  'boost/boost_system',
                                  ] )
+if use_system_version_of_library("snappy"):
+    env.StaticLibrary("shim_snappy", ['shim_snappy.cpp'],
+                      SYSLIBDEPS=['snappy'])
+else:
+    env.Append(CPPPATH='$BUILD_DIR/third_party/snappy')
+    env.SConscript('snappy/SConscript')
+    env.StaticLibrary('shim_snappy', ['shim_snappy.cpp'], LIBDEPS=['snappy/snappy'])
 
 if usesm:
     if use_system_version_of_library("sm"):
@@ -43,3 +52,12 @@ elif usev8:
         env.Append(CPPPATH='$BUILD_DIR/third_party/v8/include')
         env.SConscript('v8/SConscript')
         env.StaticLibrary('shim_v8', ['shim_v8.cpp'], LIBDEPS=['v8/v8'])
+
+if (GetOption("allocator") != "tcmalloc") or use_system_version_of_library("tcmalloc"):
+    env.StaticLibrary("shim_allocator", "shim_allocator.cpp")
+else:
+    env.SConscript('gperftools-2.0/SConscript')
+    env.StaticLibrary('shim_allocator', 'shim_allocator.cpp',
+                      LIBDEPS=['gperftools-2.0/tcmalloc_minimal'])
+
+env.SConscript('libstemmer_c/SConscript')

@@ -62,7 +62,7 @@ windows = False
 darwin = False
 
 if "darwin" == sys.platform:
-    addExtraLibs( "/opt/local/" )
+    addExtraLibs( "@@PREFIX@@/" )
     nix = True
     darwin = True
 elif sys.platform in ("linux2", "linux3"):
