@@ -698,7 +698,6 @@ if nix:
                          "-pthread",
                          "-Wall",
                          "-Wsign-compare",
-                         "-stdlib=libstdc++",
                          "-Wno-unknown-pragmas",
                          "-Winvalid-pch"] )
     # env.Append( " -Wconversion" ) TODO: this doesn't really work yet
@@ -708,7 +707,7 @@ if nix:
             env.Append( CCFLAGS=["-fno-builtin-memcmp"] ) # glibc's memcmp is faster than gcc's
 
     env.Append( CPPDEFINES=["_FILE_OFFSET_BITS=64"] )
-    env.Append( CXXFLAGS=["-Wnon-virtual-dtor", "-Woverloaded-virtual"] )
+    env.Append( CXXFLAGS=["-Wnon-virtual-dtor", "-Woverloaded-virtual", "-stdlib=libstdc++"] )
     if env['CCVERSION'] in ['4.7.3', '4.8.0', '4.8.1', '4.8.2']:
         # boost makes this warning super annoying
         env.Append( CXXFLAGS=['-Wno-unused-local-typedefs'] )
