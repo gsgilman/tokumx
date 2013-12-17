@@ -698,6 +698,7 @@ if nix:
                          "-pthread",
                          "-Wall",
                          "-Wsign-compare",
+                         "-stdlib=libstdc++",
                          "-Wno-unknown-pragmas",
                          "-Winvalid-pch"] )
     # env.Append( " -Wconversion" ) TODO: this doesn't really work yet
