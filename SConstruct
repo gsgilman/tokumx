@@ -226,6 +226,7 @@ add_option( "use-system-boost", "use system version of boost libraries", 0, True
 
 add_option( "use-system-sm", "use system version of spidermonkey library", 0, True )
 add_option( "use-system-v8", "use system version of v8 library", 0, True )
+add_option( "use-system-snappy", "use system version of snappy library", 0, True )
 
 add_option( "use-system-all" , "use all system libraries", 0 , True )
 
