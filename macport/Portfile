@@ -6,25 +6,21 @@ PortGroup           compiler_blacklist_versions 1.0
 PortGroup           conflicts_build 1.0
 PortGroup           muniversal 1.0
 
-name                mongodb
+name                tokumx
 epoch               1
-version             2.4.7
+version             1.3.3
 revision            1
-license             AGPL-3
 categories          databases
-maintainers         ryandesign
+maintainers         iuri
 
 description         High-performance, schema-free document-oriented database
 long_description    ${description}
 
 platforms           darwin
 
-homepage            http://www.mongodb.org/
-master_sites        http://downloads.mongodb.org/src/
-distname            ${name}-src-r${version}
-
-checksums           rmd160  2febfa9e93f70929c9f4c47b3062b3b5cf2c9e02 \
-                    sha256  fd703ce5e53ddfa0cca9c7fba9a0c4cea4179d38972a98c675f45d9f15b4cfdc
+fetch.type          git
+git.url             https://github.com/igagnidz/tokumx.git
+git.branch          releases/tokumx-1.3
 
 depends_build       port:scons
 
@@ -34,15 +30,6 @@ depends_lib         port:boost \
                     port:snappy
 
 license_noconflict  scons
-
-patchfiles          patch-SConstruct.diff \
-                    patch-distsrc-client-SConstruct.diff \
-                    patch-libcpp.diff \
-                    patch-src-mongo-db-fts-stemmer.cpp.diff \
-                    patch-src-mongo-dbtests-documentsourcetests.cpp.diff \
-                    patch-src-mongo-util-compress.cpp.diff \
-                    patch-src-third_party-v8-SConscript.diff \
-                    patch-src-third_party-v8-src-spaces.h.diff
 
 post-patch {
     reinplace "s|@@PREFIX@@|${prefix}|g" \
@@ -84,8 +71,8 @@ eval destroot.env   [option build.env]
 eval destroot.args  [option build.args]
 destroot.destdir    --prefix=${destroot}${prefix}
 
-set dbdir           ${prefix}/var/db/mongodb
-set logdir          ${prefix}/var/log/mongodb
+set dbdir           ${prefix}/var/db/tokumx
+set logdir          ${prefix}/var/log/tokumx
 set mongouser       _mongo
 add_users           ${mongouser} group=${mongouser} realname=MongoDB\ Server
 
@@ -114,6 +101,3 @@ if {${os.platform} eq "darwin" && ${os.major} < 10} {
         return -code error "incompatible OS X version"
     }
 }
-
-livecheck.url       ${homepage}downloads
-livecheck.regex     {mongodb-src-r(\d+\.\d*[02468]\.\d+)\.}
