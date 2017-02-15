@@ -90,26 +90,26 @@ lib*|*.dll)	# must be linking a shared lib...
 	# Shared lib creation can be taking place in the source
 	# directory only, but fipscanister.o can reside elsewhere...
 
-	if [ -x "${THERE}/fips/fips_standalone_sha1" ]; then
-		FINGERTYPE="${THERE}/fips/fips_standalone_sha1"
+	if [ -x "${THERE}/fips/fips_standalone_sha256" ]; then
+		FINGERTYPE="${THERE}/fips/fips_standalone_sha256"
 		PREMAIN_DSO="${THERE}/fips/fips_premain_dso"
-	elif [ -x "${THERE}/bin/fips_standalone_sha1" ]; then
-		FINGERTYPE="${THERE}/bin/fips_standalone_sha1"
+	elif [ -x "${THERE}/bin/fips_standalone_sha256" ]; then
+		FINGERTYPE="${THERE}/bin/fips_standalone_sha256"
 		PREMAIN_DSO="./fips_premain_dso"
 	fi
 
 	# verify fipspremain.c against its detached signature...
 	${FINGERTYPE} "${PREMAIN_C}" | sed "s/(.*\//(/" | \
-		diff -w "${PREMAIN_C}.sha1" - || \
+		diff -w "${PREMAIN_C}.sha256" - || \
 	{ echo "${PREMAIN_C} fingerprint mismatch"; exit 1; }
 	# verify fipscanister.o against its detached signature...
 	${FINGERTYPE} "${CANISTER_O}" | sed "s/(.*\//(/" | \
-		diff -w "${CANISTER_O}.sha1" - || \
+		diff -w "${CANISTER_O}.sha256" - || \
 	{ echo "${CANISTER_O} fingerprint mismatch"; exit 1; }
 
 	[ -z "${FIPSLD_LIBCRYPTO}" -a -f "${THERE}/libcrypto.a" ] && \
 		FIPSLD_LIBCRYPTO="${THERE}/libcrypto.a"
-		
+
 
 	# Temporarily remove fipscanister.o from libcrypto.a!
 	# We are required to use the standalone copy...
@@ -144,33 +144,33 @@ lib*|*.dll)	# must be linking a shared lib...
 	fi
 
 	# recompile with signature...
-        ${CC} -x c -DHMAC_SHA1_SIG=\"${SIG}\" "${PREMAIN_C}" -c -o "${PREMAIN_O}"
+        ${CC} -x c -DHMAC_SHA256_SIG=\"${SIG}\" "${PREMAIN_C}" -c -o "${PREMAIN_O}"
 	${CC}	${CANISTER_O_CMD:+"${CANISTER_O_CMD}"} \
-		-DHMAC_SHA1_SIG=\"${SIG}\" "${PREMAIN_O}" \
+		-DHMAC_SHA256_SIG=\"${SIG}\" "${PREMAIN_O}" \
 		${_WL_PREMAIN} "$@"
 	;;
 
 *)	# must be linking statically...
 	# Static linking can be taking place either in the source
 	# directory or off the installed binary target destination.
-	if [ -x "${THERE}/fips/fips_standalone_sha1" ]; then
-		FINGERTYPE="${THERE}/fips/fips_standalone_sha1"
-	elif [ -x "${THERE}/bin/fips_standalone_sha1" ]; then
-		FINGERTYPE="${THERE}/bin/fips_standalone_sha1"
+	if [ -x "${THERE}/fips/fips_standalone_sha256" ]; then
+		FINGERTYPE="${THERE}/fips/fips_standalone_sha256"
+	elif [ -x "${THERE}/bin/fips_standalone_sha256" ]; then
+		FINGERTYPE="${THERE}/bin/fips_standalone_sha256"
 	else	# Installed tree is expected to contain
-		# lib/fipscanister.o, lib/fipscanister.o.sha1 and
+		# lib/fipscanister.o, lib/fipscanister.o.sha256 and
 		# lib/fips_premain.c [not to mention bin/openssl].
-		FINGERTYPE="openssl sha1 -hmac ${HMAC_KEY}"
+		FINGERTYPE="openssl sha256 -hmac ${HMAC_KEY}"
 	fi
 
 	# verify fipscanister.o against its detached signature...
 	${FINGERTYPE} "${CANISTER_O}" | sed "s/(.*\//(/" | \
-		diff -w "${CANISTER_O}.sha1" - || \
+		diff -w "${CANISTER_O}.sha256" - || \
 	{ echo "${CANISTER_O} fingerprint mismatch"; exit 1; }
 
 	# verify fips_premain.c against its detached signature...
 	${FINGERTYPE} "${PREMAIN_C}" | sed "s/(.*\//(/" | \
-		diff -w "${PREMAIN_C}.sha1" - || \
+		diff -w "${PREMAIN_C}.sha256" - || \
 	{ echo "${PREMAIN_C} fingerprint mismatch"; exit 1; }
 
 	/bin/rm -f "${TARGET}"
@@ -178,7 +178,7 @@ lib*|*.dll)	# must be linking a shared lib...
 	${CC}	${CANISTER_O_CMD:+"${CANISTER_O_CMD}"} \
 		"${PREMAIN_O}" \
 		${_WL_PREMAIN} "$@"
-	
+
 	if [ "x${FIPS_SIG}" != "x" ]; then
 		# embed signature
 		"${FIPS_SIG}" "${TARGET}"
@@ -194,9 +194,9 @@ lib*|*.dll)	# must be linking a shared lib...
 	fi
 
 	# recompile with signature...
-        ${CC} -x c -DHMAC_SHA1_SIG=\"${SIG}\" "${PREMAIN_C}" -c -o "${PREMAIN_O}"
+        ${CC} -x c -DHMAC_SHA256_SIG=\"${SIG}\" "${PREMAIN_C}" -c -o "${PREMAIN_O}"
 	${CC}	${CANISTER_O_CMD:+"${CANISTER_O_CMD}"} \
-		-DHMAC_SHA1_SIG=\"${SIG}\" "${PREMAIN_O}" \
+		-DHMAC_SHA256_SIG=\"${SIG}\" "${PREMAIN_O}" \
 		${_WL_PREMAIN} "$@"
 	;;
 esac
